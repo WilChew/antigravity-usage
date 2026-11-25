@@ -4,7 +4,7 @@
 
 **专为 Google Antigravity 打造的现代化、轻量级 Token 监控与用量统计插件。**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square)](#)
 
@@ -25,6 +25,18 @@
 - **💾 本地 SQLite 账本持久化**：即使清空或删除聊天会话历史，所有 Token 用量依然完整安全留存。
 - **📦 一键导出 JSON 数据**：顶部直观的导出按钮，支持随时备份全量用量账本。
 - **🔄 插件内检查与自动更新**：支持在插件菜单点击「检查更新」，直接从 [WilChew/antigravity-usage](https://github.com/WilChew/antigravity-usage/releases) 获取、校验并一键更新到新版本（保留所有本地账本与设置）。
+- **🪟 Windows 桌面悬浮状态胶囊**：Antigravity 最小化后依然可在桌面右下角实时查看运行状态与 5 小时额度预警，并完全跟随 Antigravity 开关自动启停。
+
+---
+
+## 📸 悬浮窗截图与功能解说
+
+![Windows 悬浮状态胶囊预览](assets/floating-bar-preview.png)
+
+1. **空闲状态（5h 额度 ≥ 70%）**：显示 `Free`，Logo 周围为健康的绿色光环。
+2. **5 小时额度预警光环**：随着 5h 剩余额度降低，Logo 周围光环与左侧微光自动变色：**&lt; 70% 黄色**、**&lt; 50% 橙色**、**&lt; 20% 红色**。
+3. **实时计时与多任务双排显示**：单任务显示 `Running 16s`；当 2 个及以上任务并行时，自动向上扩展为上下两排独立计时（`Task 1  18s` / `Task 2  6s`）。
+4. **贴合工作区与自动退出**：默认停靠桌面右下角且严格限制在任务栏上方，支持左键拖拽与右键托盘菜单；关闭 Antigravity 时悬浮窗自动退出。
 
 ---
 

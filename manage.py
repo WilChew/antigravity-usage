@@ -24,7 +24,7 @@ SETTINGS = _paths['settings']
 APP = _paths['app']
 BACKUPS = _paths['backups']
 RUNTIME_FILES = ('assets', 'compat', 'sidecars', 'plugin.json')
-DIST_FILES = ('plugin.json', 'assets', 'sidecars', 'compat', 'manage.py', 'install.ps1',
+DIST_FILES = ('plugin.json', 'assets', 'sidecars', 'compat', 'windows', 'manage.py', 'install.ps1',
               'uninstall.ps1', 'install.sh', 'uninstall.sh', 'README.md', 'README.zh-CN.md',
               'LICENSE', 'package.json', '.gitignore')
 IGNORED = {'__pycache__', '.data', 'node_modules', '.git', 'dist', 'data', 'history-v1', 'usage-v1', 'sdk'}

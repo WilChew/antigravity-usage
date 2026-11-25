@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
 import { MetricsStore } from './store.mjs';
 import { DesktopUsage } from './usage.mjs';
 import { loadSidecarSdk } from './sdk.mjs';
@@ -35,14 +36,91 @@ store.onTrajectory=async(scope,id,raw,options={})=>{
 store.onBackgroundResult=(scope,id,file,options)=>usage.ingestDisk(scope,id,file,options);
 const preferences=new PreferencesStore();
 const updater=new AppUpdater({pluginDir:join(HERE,'..','..'),dataDir:paths.data});
+const liveStatusFile=join(paths.data,'live-status.json');
+const runningSince=new Map();
+let lastLiveWrite=0;
+function writeLiveStatus(base,usageSnap,projects,conversationId=null){
+  try{
+    const now=Date.now();
+    if(now-lastLiveWrite<800)return;
+    lastLiveWrite=now;
+    const sp=base?.speed||{},ctx=base?.context||{},curProj=projects?.currentProject||null,today=usageSnap?.today||'';
+    const projToday=curProj?.dailyList?.find(d=>d.date===today)?.totalTokens??0;
+    const summaries=Array.isArray(store.summaries)?store.summaries:[];
+    const activeIds=new Set();
+    const summaryStatusById=new Map();
+    for(const s of summaries){
+      const id=String(s?.id||'').toLowerCase();
+      if(!id)continue;
+      const st=String(s?.status||'');
+      summaryStatusById.set(id,st);
+      if(/RUNNING/i.test(st))activeIds.add(id);
+    }
+    const speedId=String(sp.conversationId||conversationId||'').toLowerCase();
+    const knownSummarySt=speedId?summaryStatusById.get(speedId):undefined;
+    if(speedId&&/RUNNING/i.test(String(sp.status||''))&&(knownSummarySt===undefined||/RUNNING/i.test(knownSummarySt))){
+      activeIds.add(speedId);
+    }
+    for(const id of [...runningSince.keys()]){
+      if(!activeIds.has(id))runningSince.delete(id);
+    }
+    for(const id of activeIds){
+      if(!runningSince.has(id))runningSince.set(id,now);
+    }
+    const runningCount=activeIds.size;
+    let runningStartedAt=null;
+    const runningTasks=[...activeIds].map(id=>{
+      const startedAt=runningSince.get(id)??now;
+      if(runningStartedAt===null||startedAt<runningStartedAt)runningStartedAt=startedAt;
+      return {id,startedAt,elapsedSeconds:Math.max(0,Math.floor((now-startedAt)/1000))};
+    }).sort((a,b)=>a.startedAt-b.startedAt);
+    const liveElapsed=runningStartedAt!==null?Math.max(0,Math.floor((now-runningStartedAt)/1000)):null;
+    const isRunning=runningCount>0;
+    let quota5hPercent=null;
+    const quotaGroups=Array.isArray(base?.groups)?base.groups:(Array.isArray(base?.quota)?base.quota:[]);
+    for(const g of quotaGroups){
+      const rem=g?.windows?.['5h']?.remaining;
+      if(typeof rem==='number'&&Number.isFinite(rem)){
+        const pct=Math.round(rem*100);
+        if(quota5hPercent===null||pct<quota5hPercent)quota5hPercent=pct;
+      }
+    }
+    const payload={
+      updatedAt:now,
+      connection:base?.connection||'offline',
+      running:isRunning,
+      runningCount,
+      runningStartedAt,
+      runningTasks,
+      quota5hPercent,
+      status:base?.connection!=='live'?(base?.connection||'offline'):(isRunning?'running':'idle'),
+      model:sp.model||'',
+      tps:typeof sp.tps==='number'&&Number.isFinite(sp.tps)?sp.tps:null,
+      elapsedSeconds:liveElapsed,
+      contextPercent:typeof ctx.percent==='number'&&Number.isFinite(ctx.percent)?ctx.percent:null,
+      cacheHitRate:typeof sp.cache?.hitRate==='number'&&Number.isFinite(sp.cache.hitRate)?sp.cache.hitRate:null,
+      todayTokens:usageSnap?.todayTokens??0,
+      monthTokens:usageSnap?.monthTokens??0,
+      project:curProj?{name:curProj.name,todayTokens:projToday,totalTokens:curProj.totalTokens}:null
+    };
+    mkdirSync(paths.data,{recursive:true});
+    const tmp=liveStatusFile+'.tmp';
+    writeFileSync(tmp,JSON.stringify(payload),'utf8');
+    renameSync(tmp,liveStatusFile);
+  }catch{}
+}
 const metrics = async input => {
   if(ownership&&!await ownership.isOwner())throw Error('Sidecar ownership changed');
   runtimeSettings();
+  if(Date.now()-store.summariesAt>=2000){
+    try{await store.listConversations(true);}catch{}
+  }
   const base=await store.snapshot(input);if(input?.usageSync===true)void usage.sync(true);
   const usageSnap=await usage.snapshot({sync:input?.usageSync===true});
   let projects=null;
   try { projects=getProjectSummary({currentConversationId:input?.conversationId,accountKey:usageSnap?.accountKey||null,timeZone:usageSnap?.timeZone||'Asia/Shanghai',force:input?.force===true}); } catch {}
   if(usageSnap&&projects)usageSnap.projects=projects;
+  writeLiveStatus(base,usageSnap,projects,input?.conversationId||null);
   return {...base,usage:usageSnap,preferences:await preferences.snapshot(),theme:await readHostTheme(),integration:integration.health};
 };
 const usageSource=()=>{const s=readFileSync(join(HERE,'..','..','compat','usage-ui.cjs'),'utf8');return `window.__agPulseUsageFactory=(${s.slice(s.indexOf('module.exports = ')+17).trim().replace(/;$/,'')});`;};
@@ -91,7 +169,19 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
   app.api('/api/preferences',async data=>{try{return await preferences.set(data);}catch{return new Response(JSON.stringify({error:'Language preference could not be saved'}),{status:400,contentType:'application/json'});}},'POST');
   app.run();
   integration.start();
+  if (process.platform === 'win32') {
+    const floatingVbs = join(HERE, '..', '..', 'windows', 'start-floating-bar.vbs');
+    if (existsSync(floatingVbs)) {
+      try {
+        const child = spawn('wscript.exe', [floatingVbs], { detached: true, windowsHide: true, stdio: 'ignore' });
+        child.unref();
+      } catch {}
+    }
+  }
+  const liveHeartbeat=setInterval(()=>{if(Date.now()-lastLiveWrite>1800&&owns())void metrics({}).catch(()=>{});},2000);
+  liveHeartbeat.unref();
   const shutdown=async()=>{
+    clearInterval(liveHeartbeat);
     usage.dispose();store.dispose();
     const exitTimer=setTimeout(()=>process.exit(0),2000);exitTimer.unref();
     await integration.stop();ownership.stop();process.exit(0);

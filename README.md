@@ -4,7 +4,7 @@
 
 **A modern, lightweight, private token tracking and usage dashboard for Google Antigravity.**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square)](#)
 
@@ -25,6 +25,18 @@
 - **💾 Persistent Usage Ledger**: Built on local SQLite storage. Preserves historical usage statistics even when clearing or deleting chats.
 - **📦 One-Click JSON Export**: Backup your complete historical usage ledger anytime.
 - **🔄 In-App GitHub Release Updates**: Click **Check for updates** in the plugin menu to check and install new verified releases from [WilChew/antigravity-usage](https://github.com/WilChew/antigravity-usage/releases).
+- **🪟 Windows Floating Status Capsule**: Ultra-compact, always-on-top desktop pill that stays visible even when Antigravity is minimized, synced to Antigravity's open/close lifecycle.
+
+---
+
+## 📸 Floating Capsule Preview & Guide
+
+![Windows Floating Status Capsule](assets/floating-bar-preview.png)
+
+1. **Free (`>= 70%` 5h quota)**: Shows `Free` with a healthy green ring around the custom Orbital-Spark logo.
+2. **Quota Warning Halo**: The logo halo shifts automatically as your 5-hour quota drops — **Yellow (`< 70%`)**, **Orange (`< 50%`)**, and **Red (`< 20%`)**.
+3. **Live Elapsed Timer & Multi-Task View**: Displays `Running 16s` for a single active task, and automatically expands upward into a 2-row layout (`Task 1  18s` / `Task 2  6s`) when multiple tasks run concurrently.
+4. **Taskbar-Safe & Lifecycle-Synced**: Anchors at the bottom-right corner above the taskbar, never overlaps the taskbar, and exits automatically when Antigravity closes.
 
 ---
 
