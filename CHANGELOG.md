@@ -1,5 +1,16 @@
 # Changelog
 
+## [v1.2.2] - 2026-11-26
+
+### ✨ New Features / 新增功能
+- **Action Needed Status & Alert (等待用户操作状态与视觉提醒)** (`sidecars/panel/main.mjs`, `windows/floating-bar.ps1`):
+  - **Accurate Waiting State Detection (精准检测任务等待状态)**: 通过只读读取本地 SQLite 对话数据库中的步骤状态（`status = 8` 为 `CORTEX_STEP_STATUS_WAITING`），精准识别智能体正在等待用户输入、确认工具权限、回答提问或确认计划。
+  - **Action Needed Visual Style (琥珀金专属提醒视觉)**: 当任务处于等待状态时，胶囊与系统托盘图标即时切换为琥珀金提醒色（`#F59E0B` / `#FEF08A`），文字显示为 `Action Needed`，边缘呼吸光效柔和跳动，提醒用户及时响应。
+  - **Auto-Expand on Waiting (贴边收起状态下自动提醒)**: 若悬浮窗处于屏幕边缘收起状态，一旦出现 `Action Needed`，把手小圆点亮起醒目金光；点击展开即可一目了然。
+  - **Ghost Running Elimination (彻底消除已结束任务残留 Running 假象)**: 智能过滤已完成对话步骤（`status 3, 4, 7`），彻底解决任务跑完后悬浮窗仍偶现卡在 Running 状态的问题。
+
+---
+
 ## [v1.2.1] - 2026-11-26
 
 ### 🐛 Bug Fixes / 问题修复

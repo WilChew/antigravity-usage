@@ -1,5 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
@@ -39,6 +41,26 @@ const updater=new AppUpdater({pluginDir:join(HERE,'..','..'),dataDir:paths.data}
 const liveStatusFile=join(paths.data,'live-status.json');
 const runningSince=new Map();
 let lastLiveWrite=0;
+
+function inspectConversationState(id){
+  try{
+    const dbFile=join(homedir(),'.gemini','antigravity','conversations',`${id}.db`);
+    if(!existsSync(dbFile))return null;
+    const db=new DatabaseSync(dbFile,{readOnly:true});
+    const stmt=db.prepare('SELECT idx, step_type, status FROM steps ORDER BY idx DESC LIMIT 3');
+    const rows=stmt.all();
+    db.close();
+    if(!rows||rows.length===0)return null;
+    const statuses=rows.map(r=>Number(r.status));
+    if(statuses.some(s=>s===2||s===5))return 'running';
+    if(statuses.some(s=>s===8))return 'waiting';
+    if(statuses.every(s=>s===3||s===4||s===7))return 'idle';
+    return null;
+  }catch{
+    return null;
+  }
+}
+
 function writeLiveStatus(base,usageSnap,projects,conversationId=null){
   try{
     const now=Date.now();
@@ -47,35 +69,54 @@ function writeLiveStatus(base,usageSnap,projects,conversationId=null){
     const sp=base?.speed||{},ctx=base?.context||{},curProj=projects?.currentProject||null,today=usageSnap?.today||'';
     const projToday=curProj?.dailyList?.find(d=>d.date===today)?.totalTokens??0;
     const summaries=Array.isArray(store.summaries)?store.summaries:[];
-    const activeIds=new Set();
+    const candidateIds=new Set();
     const summaryStatusById=new Map();
     for(const s of summaries){
       const id=String(s?.id||'').toLowerCase();
       if(!id)continue;
       const st=String(s?.status||'');
       summaryStatusById.set(id,st);
-      if(/RUNNING/i.test(st))activeIds.add(id);
+      if(/RUNNING/i.test(st))candidateIds.add(id);
     }
     const speedId=String(sp.conversationId||conversationId||'').toLowerCase();
     const knownSummarySt=speedId?summaryStatusById.get(speedId):undefined;
     if(speedId&&/RUNNING/i.test(String(sp.status||''))&&(knownSummarySt===undefined||/RUNNING/i.test(knownSummarySt))){
-      activeIds.add(speedId);
+      candidateIds.add(speedId);
+    }
+
+    const runningTasks=[];
+    const waitingTasks=[];
+    for(const id of candidateIds){
+      let state=inspectConversationState(id);
+      if(state===null)state='running';
+      if(state==='idle'){
+        runningSince.delete(id);
+        continue;
+      }
+      if(!runningSince.has(id))runningSince.set(id,now);
+      const startedAt=runningSince.get(id)??now;
+      const taskInfo={
+        id,
+        state,
+        startedAt,
+        elapsedSeconds:Math.max(0,Math.floor((now-startedAt)/1000))
+      };
+      if(state==='waiting'){
+        waitingTasks.push(taskInfo);
+      }else{
+        runningTasks.push(taskInfo);
+      }
     }
     for(const id of [...runningSince.keys()]){
-      if(!activeIds.has(id))runningSince.delete(id);
+      if(!candidateIds.has(id))runningSince.delete(id);
     }
-    for(const id of activeIds){
-      if(!runningSince.has(id))runningSince.set(id,now);
-    }
-    const runningCount=activeIds.size;
-    let runningStartedAt=null;
-    const runningTasks=[...activeIds].map(id=>{
-      const startedAt=runningSince.get(id)??now;
-      if(runningStartedAt===null||startedAt<runningStartedAt)runningStartedAt=startedAt;
-      return {id,startedAt,elapsedSeconds:Math.max(0,Math.floor((now-startedAt)/1000))};
-    }).sort((a,b)=>a.startedAt-b.startedAt);
+
+    const hasWaiting=waitingTasks.length>0;
+    const hasRunning=runningTasks.length>0;
+    const activeTasks=[...waitingTasks,...runningTasks].sort((a,b)=>a.startedAt-b.startedAt);
+    let runningStartedAt=activeTasks.length>0?Math.min(...activeTasks.map(t=>t.startedAt)):null;
     const liveElapsed=runningStartedAt!==null?Math.max(0,Math.floor((now-runningStartedAt)/1000)):null;
-    const isRunning=runningCount>0;
+
     let quota5hPercent=null;
     const quotaGroups=Array.isArray(base?.groups)?base.groups:(Array.isArray(base?.quota)?base.quota:[]);
     for(const g of quotaGroups){
@@ -88,12 +129,15 @@ function writeLiveStatus(base,usageSnap,projects,conversationId=null){
     const payload={
       updatedAt:now,
       connection:base?.connection||'offline',
-      running:isRunning,
-      runningCount,
+      running:hasRunning||hasWaiting,
+      actionNeeded:hasWaiting,
+      status:base?.connection!=='live'?(base?.connection||'offline'):(hasWaiting?'waiting':(hasRunning?'running':'idle')),
+      runningCount:runningTasks.length,
+      waitingCount:waitingTasks.length,
       runningStartedAt,
-      runningTasks,
+      runningTasks:activeTasks,
+      waitingTasks,
       quota5hPercent,
-      status:base?.connection!=='live'?(base?.connection||'offline'):(isRunning?'running':'idle'),
       model:sp.model||'',
       tps:typeof sp.tps==='number'&&Number.isFinite(sp.tps)?sp.tps:null,
       elapsedSeconds:liveElapsed,

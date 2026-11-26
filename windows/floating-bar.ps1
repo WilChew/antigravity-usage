@@ -238,10 +238,12 @@ function New-TrayLogoIcon([System.Drawing.Color]$accentColor) {
     return [System.Drawing.Icon]::FromHandle($hIcon)
 }
 
+$ColorActionNeeded = [System.Drawing.Color]::FromArgb(255, 245, 158, 11)  # Amber #F59E0B
 $ColorRunning = [System.Drawing.Color]::FromArgb(255, 52, 211, 153)  # Emerald #34D399
 $ColorIdle    = [System.Drawing.Color]::FromArgb(255, 96, 165, 250)  # Sky Blue #60A5FA
 $ColorOffline = [System.Drawing.Color]::FromArgb(255, 148, 163, 184) # Slate #94A3B8
 
+$IconActionNeeded = New-TrayLogoIcon $ColorActionNeeded
 $IconRunning = New-TrayLogoIcon $ColorRunning
 $IconIdle    = New-TrayLogoIcon $ColorIdle
 $IconOffline = New-TrayLogoIcon $ColorOffline
@@ -420,6 +422,8 @@ function Render-DockTab() {
     # Outer border with status/quota color
     $rimColor = if ($null -ne $script:quotaRingColor -and $script:quotaWarning) {
         $script:quotaRingColor
+    } elseif ($script:statusState -eq "action_needed") {
+        [System.Drawing.Color]::FromArgb(200, 245, 158, 11)
     } elseif ($script:statusState -eq "running") {
         [System.Drawing.Color]::FromArgb(180, 52, 211, 153)
     } else {
@@ -432,7 +436,7 @@ function Render-DockTab() {
 
     # Glowing pulse status dot on the tab
     $dotColor = if ($null -ne $script:quotaRingColor) { $script:quotaRingColor } else { $script:accentColor }
-    $glowAlpha = if ($script:statusState -eq "running") { 0.55 + 0.45 * [math]::Sin($script:pulsePhase) } else { 0.0 }
+    $glowAlpha = if ($script:statusState -eq "running" -or $script:statusState -eq "action_needed") { 0.55 + 0.45 * [math]::Sin($script:pulsePhase) } else { 0.0 }
     if ($glowAlpha -gt 0.01) {
         $aHalo = [int][math]::Min(255, 90 * $glowAlpha)
         $hBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb($aHalo, $dotColor.R, $dotColor.G, $dotColor.B))
@@ -512,6 +516,8 @@ function Render-Capsule() {
     # Subtle status / quota tint on left edge (logo side)
     $leftTintCol = if ($null -ne $script:quotaRingColor -and $script:quotaWarning) {
         $script:quotaRingColor
+    } elseif ($script:statusState -eq "action_needed") {
+        $ColorActionNeeded
     } elseif ($script:statusState -eq "running") {
         [System.Drawing.Color]::FromArgb(255, 52, 211, 153)
     } else {
@@ -532,7 +538,9 @@ function Render-Capsule() {
     }
 
     # Subtle outer pill border
-    $rimColor = if ($script:statusState -eq "running") {
+    $rimColor = if ($script:statusState -eq "action_needed") {
+        [System.Drawing.Color]::FromArgb(180, 245, 158, 11)
+    } elseif ($script:statusState -eq "running") {
         [System.Drawing.Color]::FromArgb(135, 52, 211, 153)
     } else {
         [System.Drawing.Color]::FromArgb(140, 71, 85, 105)
@@ -543,11 +551,13 @@ function Render-Capsule() {
     $pillPath.Dispose()
 
     # Draw custom Antigravity Orbital-Spark logo on the left
-    $glow = if ($script:statusState -eq "running") { 0.55 + 0.45 * [math]::Sin($script:pulsePhase) } else { 0.0 }
+    $glow = if ($script:statusState -eq "running" -or $script:statusState -eq "action_needed") { 0.55 + 0.45 * [math]::Sin($script:pulsePhase) } else { 0.0 }
     Draw-AntigravityLogo $g 20.0 ($h / 2.0) 22.0 $script:accentColor $glow $script:quotaRingColor
 
     # Draw crisp status text
-    $textColor = if ($script:statusState -eq "running") {
+    $textColor = if ($script:statusState -eq "action_needed") {
+        [System.Drawing.Color]::FromArgb(255, 254, 240, 138)
+    } elseif ($script:statusState -eq "running") {
         [System.Drawing.Color]::FromArgb(255, 220, 252, 231)
     } elseif ($script:statusState -eq "idle") {
         [System.Drawing.Color]::FromArgb(255, 235, 241, 248)
@@ -768,11 +778,11 @@ $tray.Add_MouseClick({
     }
 })
 
-# Smooth breathing glow animation while running
+# Smooth breathing glow animation while running or action needed
 $pulseTimer = New-Object System.Windows.Forms.Timer
 $pulseTimer.Interval = 90
 $pulseTimer.Add_Tick({
-    if ($script:statusState -eq "running" -and $form.Visible) {
+    if (($script:statusState -eq "running" -or $script:statusState -eq "action_needed") -and $form.Visible) {
         $script:pulsePhase += 0.25
         if ($script:pulsePhase -gt 6.283) { $script:pulsePhase -= 6.283 }
         Render-FloatingBar
@@ -829,11 +839,11 @@ $timer.Add_Tick({
         if ($null -ne $data.runningCount) { $runningCount = [int]$data.runningCount }
         elseif ([bool]$data.running) { $runningCount = 1 }
         $isRunning = (-not $isOffline) -and ($runningCount -gt 0)
+        $isActionNeeded = (-not $isOffline) -and ([bool]$data.actionNeeded -or ($null -ne $data.waitingCount -and [int]$data.waitingCount -gt 0) -or ($data.status -eq 'waiting'))
 
         # 5-hour quota ring color around logo (>=70% green, <70% yellow, <50% orange, <20% red)
         $script:quotaRingColor = $null
-$script:quotaWarning   = $false
-        $script:quotaWarning = $false
+        $script:quotaWarning   = $false
         if ($null -ne $data.quota5hPercent) {
             $qPct = [double]$data.quota5hPercent
             if ($qPct -lt 20) {
@@ -856,6 +866,29 @@ $script:quotaWarning   = $false
             $tray.Icon = $IconOffline
             $statusLabel = "Offline"
             [string[]]$script:statusLines = @("Offline")
+        } elseif ($isActionNeeded) {
+            if ($script:statusState -ne "action_needed" -and $script:isDocked -and $script:dockEdge -ne "none") {
+                $script:isDocked = $false
+                $cfg.IsDocked = $false
+                Save-Config
+            }
+            $script:statusState = "action_needed"
+            $script:accentColor = $ColorActionNeeded
+            $tray.Icon = $IconActionNeeded
+            $statusLabel = "Action Needed"
+            if ($isRunning) {
+                $elapsedSec = $data.elapsedSeconds
+                if ($null -ne $data.runningStartedAt -and [long]$data.runningStartedAt -gt 0) {
+                    $elapsedSec = [math]::Max(0, [math]::Floor(($nowMs - [long]$data.runningStartedAt) / 1000.0))
+                }
+                $el = Format-Elapsed $elapsedSec
+                if (-not $el) { $el = "0s" }
+                [string[]]$script:statusLines = @("Action Needed", "Running $el")
+                $statusLabel = "Action Needed (Running $el)"
+            } else {
+                [string[]]$script:statusLines = @("Action Needed")
+                $statusLabel = "Action Needed"
+            }
         } elseif ($isRunning) {
             $script:statusState = "running"
             $script:accentColor = $ColorRunning
