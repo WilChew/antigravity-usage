@@ -1,6 +1,6 @@
 {
   "name": "antigravity-usage",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Antigravity Usage - Real-time Token usage, cache hit rate, cost estimation, multi-currency support and detailed metrics widget.",
   "license": "MIT",

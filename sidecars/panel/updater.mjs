@@ -107,7 +107,7 @@ export class AppUpdater{
     return this.publicState();
    }
    try{
-    const result=await this.run(this.worker,['check','--current',current]);
+    const result=await this.run(this.worker,['check','--target',this.pluginDir]);
     if(!result||result.host!=='app'||result.currentVersion!==current||typeof result.latestVersion!=='string')throw Error('verification');
     if(result.hasUpdate===true){
      this.plan={...result,expires:this.now()+15*60*1000};

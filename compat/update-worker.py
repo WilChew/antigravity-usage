@@ -842,10 +842,13 @@ def emit_progress(value):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['check', 'apply', 'recover'])
-    parser.add_argument('--target', required=True, type=Path)
+    parser.add_argument('--target', type=Path)
+    parser.add_argument('--current')
     parser.add_argument('--plan', type=Path)
     parser.add_argument('--updates', type=Path)
     args = parser.parse_args()
+    if not args.target:
+        args.target = Path(__file__).resolve().parent.parent
     try:
         # Pin the verified native installation to its physical root. Relocated
         # user-owned ancestors may be links; runtime/transaction roots may not.

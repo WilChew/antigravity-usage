@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.2.1] - 2026-11-26
+
+### 🐛 Bug Fixes / 问题修复
+- **Fix In-App Update Checker (修复插件内检查更新报错)** (`sidecars/panel/updater.mjs`, `compat/update-worker.py`):
+  - 修复了 `updater.mjs` 在执行更新检查时传参格式不匹配导致 `update-worker.py` 报 `--target` 缺失、UI 提示 `Installation could not be confirmed. Check for updates again.` 的问题。
+  - 为 `update-worker.py` 的 CLI 参数解析增加向后容错机制，默认自动推导插件安装根目录，确保检查与更新流程 100% 顺畅。
+
+---
+
 ## [v1.2.0] - 2026-11-26
 
 ### ✨ New Features / 新增功能

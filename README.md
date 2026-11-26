@@ -4,7 +4,7 @@
 
 **A modern, lightweight, private token tracking and usage dashboard for Google Antigravity.**
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg?style=flat-square)](#)
+[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg?style=flat-square)](#)
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square)](#)
 
