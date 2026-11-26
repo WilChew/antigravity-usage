@@ -1,4 +1,4 @@
-# Antigravity Usage - Custom-Painted Windows Floating Status Capsule & Vector Logo
+﻿# Antigravity Usage - Custom-Painted Windows Floating Status Capsule & Vector Logo
 # Zero external dependencies: anti-aliased .NET WinForms + GDI+ custom rendering.
 $createdNew = $false
 $script:singleMutex = New-Object System.Threading.Mutex($true, "Local\AntigravityUsageFloatingBar", [ref]$createdNew)
@@ -126,13 +126,15 @@ function Format-Elapsed($sec) {
     return "${m}m${r}s"
 }
 
-$cfg = @{ X = -1; Y = -1; TopMost = $true }
+$cfg = @{ X = -1; Y = -1; TopMost = $true; DockEdge = "none"; IsDocked = $false }
 if (Test-Path $ConfigFile) {
     try {
         $loaded = Get-Content $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($null -ne $loaded.X) { $cfg.X = [int]$loaded.X }
         if ($null -ne $loaded.Y) { $cfg.Y = [int]$loaded.Y }
         if ($null -ne $loaded.TopMost) { $cfg.TopMost = [bool]$loaded.TopMost }
+        if ($null -ne $loaded.DockEdge) { $cfg.DockEdge = [string]$loaded.DockEdge }
+        if ($null -ne $loaded.IsDocked) { $cfg.IsDocked = [bool]$loaded.IsDocked }
     } catch {}
 }
 
@@ -252,6 +254,11 @@ $script:quotaRingColor = $null
 $script:quotaWarning   = $false
 $script:pulsePhase  = 0.0
 
+$script:dockEdge = if ($cfg.DockEdge) { [string]$cfg.DockEdge } else { "none" }
+$script:isDocked = if ($null -ne $cfg.IsDocked) { [bool]$cfg.IsDocked } else { $false }
+$script:expandedWidth  = 128
+$script:expandedHeight = 36
+
 $form = New-Object AgCapsuleForm
 $form.Text = "Antigravity Usage"
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
@@ -273,11 +280,11 @@ $form.Location = New-Object System.Drawing.Point($cfg.X, $cfg.Y)
 
 function Clamp-ToWorkingArea() {
     $wa = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
-    $pad = 8
-    $minX = $wa.Left + $pad
-    $maxX = [math]::Max($minX, $wa.Right - $form.Width - $pad)
-    $minY = $wa.Top + $pad
-    $maxY = [math]::Max($minY, $wa.Bottom - $form.Height - $pad)
+    $pad = 4
+    $minX = $wa.Left
+    $maxX = [math]::Max($minX, $wa.Right - $form.Width)
+    $minY = $wa.Top
+    $maxY = [math]::Max($minY, $wa.Bottom - $form.Height - 4)
     $nx = [math]::Min($maxX, [math]::Max($minX, $form.Left))
     $ny = [math]::Min($maxY, [math]::Max($minY, $form.Top))
     if ($nx -ne $form.Left -or $ny -ne $form.Top) {
@@ -288,6 +295,7 @@ Clamp-ToWorkingArea
 
 $fontStatus = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5, [System.Drawing.FontStyle]::Regular)
 $fontTask   = New-Object System.Drawing.Font("Segoe UI Semibold", 8.5, [System.Drawing.FontStyle]::Regular)
+$fontArrow  = New-Object System.Drawing.Font("Segoe UI Symbol", 8.0, [System.Drawing.FontStyle]::Bold)
 [string[]]$script:statusLines = @("Free")
 
 function Update-CapsuleWidth() {
@@ -312,19 +320,160 @@ function Update-CapsuleWidth() {
 
     $desiredW = [int][math]::Max(96, [math]::Min(220, [math]::Ceiling($maxW) + 58))
     $desiredH = if ($isMulti) { 48 } else { 36 }
-    $sizeChanged = ([math]::Abs($form.Width - $desiredW) -gt 2) -or ($form.Height -ne $desiredH)
-    if ($sizeChanged) {
-        $oldW = $form.Width
-        $oldH = $form.Height
-        $wa = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
-        $nearRight  = ($form.Left + ($oldW / 2)) -gt ($wa.Left + ($wa.Width / 2))
-        $nearBottom = ($form.Top + ($oldH / 2)) -gt ($wa.Top + ($wa.Height / 2))
-        $newX = if ($nearRight)  { $form.Left + ($oldW - $desiredW) } else { $form.Left }
-        $newY = if ($nearBottom) { $form.Top  + ($oldH - $desiredH) } else { $form.Top }
-        $form.SetBounds([int]$newX, [int]$newY, $desiredW, $desiredH)
-        Clamp-ToWorkingArea
+    $script:expandedWidth  = $desiredW
+    $script:expandedHeight = $desiredH
+
+    $wa = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
+
+    if ($script:isDocked -and $script:dockEdge -ne "none") {
+        # Collapsed mode: shrink to edge tab
+        $tabW = 22
+        switch ($script:dockEdge) {
+            "right" {
+                $ny = [math]::Max($wa.Top + 6, [math]::Min($wa.Bottom - $desiredH - 8, $form.Top))
+                $form.SetBounds(($wa.Right - $tabW), $ny, $tabW, $desiredH)
+            }
+            "left" {
+                $ny = [math]::Max($wa.Top + 6, [math]::Min($wa.Bottom - $desiredH - 8, $form.Top))
+                $form.SetBounds($wa.Left, $ny, $tabW, $desiredH)
+            }
+            "top" {
+                $tabTopW = 54
+                $tabTopH = 18
+                $nx = [math]::Max($wa.Left + 6, [math]::Min($wa.Right - $tabTopW - 6, $form.Left))
+                $form.SetBounds($nx, $wa.Top, $tabTopW, $tabTopH)
+            }
+        }
+    } else {
+        # Expanded or free-floating mode
+        if ($script:dockEdge -eq "right") {
+            $ny = [math]::Max($wa.Top + 6, [math]::Min($wa.Bottom - $desiredH - 8, $form.Top))
+            $form.SetBounds(($wa.Right - $desiredW), $ny, $desiredW, $desiredH)
+        } elseif ($script:dockEdge -eq "left") {
+            $ny = [math]::Max($wa.Top + 6, [math]::Min($wa.Bottom - $desiredH - 8, $form.Top))
+            $form.SetBounds($wa.Left, $ny, $desiredW, $desiredH)
+        } elseif ($script:dockEdge -eq "top") {
+            $nx = [math]::Max($wa.Left + 6, [math]::Min($wa.Right - $desiredW - 6, $form.Left))
+            $form.SetBounds($nx, $wa.Top, $desiredW, $desiredH)
+        } else {
+            $oldW = $form.Width
+            $oldH = $form.Height
+            $nearRight  = ($form.Left + ($oldW / 2)) -gt ($wa.Left + ($wa.Width / 2))
+            $nearBottom = ($form.Top + ($oldH / 2)) -gt ($wa.Top + ($wa.Height / 2))
+            $newX = if ($nearRight)  { $form.Left + ($oldW - $desiredW) } else { $form.Left }
+            $newY = if ($nearBottom) { $form.Top  + ($oldH - $desiredH) } else { $form.Top }
+            $form.SetBounds([int]$newX, [int]$newY, $desiredW, $desiredH)
+            Clamp-ToWorkingArea
+        }
     }
-    Render-Capsule
+    Render-FloatingBar
+}
+
+# Render edge docked handle tab (collapsed state)
+function Render-DockTab() {
+    if (-not $form.IsHandleCreated) { return }
+    $w = $form.Width
+    $h = $form.Height
+    if ($w -le 0 -or $h -le 0) { return }
+
+    $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.Clear([System.Drawing.Color]::Transparent)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+
+    $tabPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    if ($script:dockEdge -eq "right") {
+        $r = [float][math]::Min(11.0, ($w - 2))
+        $tabPath.AddArc(1.0, 1.0, ($r * 2), ($r * 2), 180.0, 90.0)
+        $tabPath.AddLine(($r + 1.0), 1.0, [float]($w), 1.0)
+        $tabPath.AddLine([float]($w), 1.0, [float]($w), [float]($h - 1.0))
+        $tabPath.AddLine([float]($w), [float]($h - 1.0), ($r + 1.0), [float]($h - 1.0))
+        $tabPath.AddArc(1.0, [float]($h - $r * 2 - 1.0), ($r * 2), ($r * 2), 90.0, 90.0)
+        $tabPath.CloseFigure()
+    } elseif ($script:dockEdge -eq "left") {
+        $r = [float][math]::Min(11.0, ($w - 2))
+        $tabPath.AddLine(0.0, 1.0, [float]($w - $r - 1.0), 1.0)
+        $tabPath.AddArc([float]($w - $r * 2 - 1.0), 1.0, ($r * 2), ($r * 2), 270.0, 90.0)
+        $tabPath.AddArc([float]($w - $r * 2 - 1.0), [float]($h - $r * 2 - 1.0), ($r * 2), ($r * 2), 0.0, 90.0)
+        $tabPath.AddLine([float]($w - $r - 1.0), [float]($h - 1.0), 0.0, [float]($h - 1.0))
+        $tabPath.CloseFigure()
+    } else {
+        $r = [float][math]::Min(9.0, ($h - 2))
+        $tabPath.AddLine(1.0, 0.0, [float]($w - 1.0), 0.0)
+        $tabPath.AddArc([float]($w - $r * 2 - 1.0), [float]($h - $r * 2 - 1.0), ($r * 2), ($r * 2), 0.0, 90.0)
+        $tabPath.AddArc(1.0, [float]($h - $r * 2 - 1.0), ($r * 2), ($r * 2), 90.0, 90.0)
+        $tabPath.CloseFigure()
+    }
+
+    # Dark background
+    $bgBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+        (New-Object System.Drawing.Rectangle(0, 0, $w, $h)),
+        [System.Drawing.Color]::FromArgb(248, 29, 34, 48),
+        [System.Drawing.Color]::FromArgb(248, 16, 19, 28),
+        90.0
+    )
+    $g.FillPath($bgBrush, $tabPath)
+    $bgBrush.Dispose()
+
+    # Outer border with status/quota color
+    $rimColor = if ($null -ne $script:quotaRingColor -and $script:quotaWarning) {
+        $script:quotaRingColor
+    } elseif ($script:statusState -eq "running") {
+        [System.Drawing.Color]::FromArgb(180, 52, 211, 153)
+    } else {
+        [System.Drawing.Color]::FromArgb(140, 71, 85, 105)
+    }
+    $rimPen = New-Object System.Drawing.Pen $rimColor, 1.2
+    $g.DrawPath($rimPen, $tabPath)
+    $rimPen.Dispose()
+    $tabPath.Dispose()
+
+    # Glowing pulse status dot on the tab
+    $dotColor = if ($null -ne $script:quotaRingColor) { $script:quotaRingColor } else { $script:accentColor }
+    $glowAlpha = if ($script:statusState -eq "running") { 0.55 + 0.45 * [math]::Sin($script:pulsePhase) } else { 0.0 }
+    if ($glowAlpha -gt 0.01) {
+        $aHalo = [int][math]::Min(255, 90 * $glowAlpha)
+        $hBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb($aHalo, $dotColor.R, $dotColor.G, $dotColor.B))
+        if ($script:dockEdge -eq "right") {
+            $g.FillEllipse($hBrush, 4.0, [float]($h / 2.0 - 9.0), 12.0, 12.0)
+        } elseif ($script:dockEdge -eq "left") {
+            $g.FillEllipse($hBrush, [float]($w - 16.0), [float]($h / 2.0 - 9.0), 12.0, 12.0)
+        } else {
+            $g.FillEllipse($hBrush, [float]($w / 2.0 - 14.0), 3.0, 12.0, 12.0)
+        }
+        $hBrush.Dispose()
+    }
+
+    $dotBrush = New-Object System.Drawing.SolidBrush $dotColor
+    if ($script:dockEdge -eq "right") {
+        $g.FillEllipse($dotBrush, 7.0, [float]($h / 2.0 - 6.0), 6.0, 6.0)
+    } elseif ($script:dockEdge -eq "left") {
+        $g.FillEllipse($dotBrush, [float]($w - 13.0), [float]($h / 2.0 - 6.0), 6.0, 6.0)
+    } else {
+        $g.FillEllipse($dotBrush, [float]($w / 2.0 - 11.0), 6.0, 6.0)
+    }
+    $dotBrush.Dispose()
+
+    # Draw small directional indicator arrow (e.g. ‹ to expand leftward)
+    $arrBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(210, 148, 163, 184))
+    $sfArr = New-Object System.Drawing.StringFormat
+    $sfArr.Alignment = [System.Drawing.StringAlignment]::Center
+    $sfArr.LineAlignment = [System.Drawing.StringAlignment]::Center
+    if ($script:dockEdge -eq "right") {
+        $g.DrawString([char]0x2039, $fontArrow, $arrBrush, (New-Object System.Drawing.RectangleF(1.0, [float]($h / 2.0 + 1.0), 18.0, 14.0)), $sfArr)
+    } elseif ($script:dockEdge -eq "left") {
+        $g.DrawString([char]0x203A, $fontArrow, $arrBrush, (New-Object System.Drawing.RectangleF([float]($w - 19.0), [float]($h / 2.0 + 1.0), 18.0, 14.0)), $sfArr)
+    } else {
+        $g.DrawString([char]0x02C7, $fontArrow, $arrBrush, (New-Object System.Drawing.RectangleF([float]($w / 2.0 + 2.0), 1.0, 16.0, 16.0)), $sfArr)
+    }
+    $arrBrush.Dispose()
+    $sfArr.Dispose()
+
+    $form.SetBitmap($bmp, 248)
+    $g.Dispose()
+    $bmp.Dispose()
 }
 
 function Render-Capsule() {
@@ -424,21 +573,49 @@ function Render-Capsule() {
     $textBrush.Dispose()
     $sf.Dispose()
 
+    # If docked & expanded, show a subtle retract arrow on the docking edge
+    if ($script:dockEdge -eq "right") {
+        $arrB = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(140, 148, 163, 184))
+        $sfR = New-Object System.Drawing.StringFormat
+        $sfR.Alignment = [System.Drawing.StringAlignment]::Center
+        $sfR.LineAlignment = [System.Drawing.StringAlignment]::Center
+        $g.DrawString([char]0x203A, $fontArrow, $arrB, (New-Object System.Drawing.RectangleF(($w - 18.0), 0.0, 14.0, $h)), $sfR)
+        $arrB.Dispose(); $sfR.Dispose()
+    } elseif ($script:dockEdge -eq "left") {
+        $arrB = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(140, 148, 163, 184))
+        $sfL = New-Object System.Drawing.StringFormat
+        $sfL.Alignment = [System.Drawing.StringAlignment]::Center
+        $sfL.LineAlignment = [System.Drawing.StringAlignment]::Center
+        $g.DrawString([char]0x2039, $fontArrow, $arrB, (New-Object System.Drawing.RectangleF(4.0, 0.0, 14.0, $h)), $sfL)
+        $arrB.Dispose(); $sfL.Dispose()
+    }
+
     $form.SetBitmap($bmp, 248)
     $g.Dispose()
     $bmp.Dispose()
 }
 
-# Mouse interactions: drag to move, right-click for menu
-$script:dragging = $false
-$script:dragStart = New-Object System.Drawing.Point(0, 0)
-$form.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+function Render-FloatingBar() {
+    if ($script:isDocked -and $script:dockEdge -ne "none") {
+        Render-DockTab
+    } else {
+        Render-Capsule
+    }
+}
+
+# Mouse interactions: click to toggle expand/collapse when docked, drag to move / dock to edge
+$script:isMouseDown = $false
+$script:hasDragged  = $false
+$script:mouseDownPos = New-Object System.Drawing.Point(0, 0)
+$script:dragStartForm = New-Object System.Drawing.Point(0, 0)
 
 $form.Add_MouseDown({
     param($s, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-        $script:dragging = $true
-        $script:dragStart = $e.Location
+        $script:isMouseDown = $true
+        $script:hasDragged = $false
+        $script:mouseDownPos = [System.Windows.Forms.Cursor]::Position
+        $script:dragStartForm = $form.Location
     } elseif ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
         $menu.Show([System.Windows.Forms.Cursor]::Position)
     }
@@ -446,21 +623,72 @@ $form.Add_MouseDown({
 
 $form.Add_MouseMove({
     param($s, $e)
-    if ($script:dragging) {
-        $form.Left += ($e.X - $script:dragStart.X)
-        $form.Top  += ($e.Y - $script:dragStart.Y)
-        Clamp-ToWorkingArea
+    if ($script:isMouseDown) {
+        $cur = [System.Windows.Forms.Cursor]::Position
+        $dx = [math]::Abs($cur.X - $script:mouseDownPos.X)
+        $dy = [math]::Abs($cur.Y - $script:mouseDownPos.Y)
+        if ($dx -gt 5 -or $dy -gt 5) {
+            $script:hasDragged = $true
+            if ($script:isDocked) {
+                # Expand dynamically during dragging so user can see full pill
+                $script:isDocked = $false
+                Update-CapsuleWidth
+            }
+            $form.Left = $script:dragStartForm.X + ($cur.X - $script:mouseDownPos.X)
+            $form.Top  = $script:dragStartForm.Y + ($cur.Y - $script:mouseDownPos.Y)
+            Clamp-ToWorkingArea
+        }
+    } else {
+        if ($script:isDocked -or $script:dockEdge -ne "none") {
+            $form.Cursor = [System.Windows.Forms.Cursors]::Hand
+        } else {
+            $form.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+        }
     }
 })
 
 $form.Add_MouseUp({
     param($s, $e)
-    if ($script:dragging) {
-        $script:dragging = $false
-        Clamp-ToWorkingArea
-        $cfg.X = $form.Left
-        $cfg.Y = $form.Top
-        Save-Config
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        $script:isMouseDown = $false
+        if ($script:hasDragged) {
+            $script:hasDragged = $false
+            $wa = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
+            $edgeThreshold = 32
+
+            $nearRight = ($form.Right -ge ($wa.Right - $edgeThreshold))
+            $nearLeft  = ($form.Left -le ($wa.Left + $edgeThreshold))
+            $nearTop   = ($form.Top -le ($wa.Top + $edgeThreshold))
+
+            if ($nearRight) {
+                $script:dockEdge = "right"
+                $script:isDocked = $true
+            } elseif ($nearLeft) {
+                $script:dockEdge = "left"
+                $script:isDocked = $true
+            } elseif ($nearTop) {
+                $script:dockEdge = "top"
+                $script:isDocked = $true
+            } else {
+                # User dragged capsule out into the screen
+                $script:dockEdge = "none"
+                $script:isDocked = $false
+                $cfg.X = $form.Left
+                $cfg.Y = $form.Top
+            }
+            $cfg.DockEdge = $script:dockEdge
+            $cfg.IsDocked = $script:isDocked
+            Save-Config
+            Update-CapsuleWidth
+        } else {
+            # Pure click: toggle expand / collapse when docked
+            if ($script:dockEdge -ne "none") {
+                $script:isDocked = -not $script:isDocked
+                $cfg.IsDocked = $script:isDocked
+                Save-Config
+                Update-CapsuleWidth
+            }
+        }
     }
 })
 
@@ -475,6 +703,21 @@ $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $miToggle = $menu.Items.Add("Show / Hide Floating Bar")
 $miToggle.Add_Click({
     if ($form.Visible) { $form.Hide() } else { $form.Show(); $form.BringToFront() }
+})
+
+$miDock = $menu.Items.Add("Dock to Edge / Collapse")
+$miDock.Add_Click({
+    $wa = [System.Windows.Forms.Screen]::FromControl($form).WorkingArea
+    if ($form.Left -gt ($wa.Left + $wa.Width / 2)) {
+        $script:dockEdge = "right"
+    } else {
+        $script:dockEdge = "left"
+    }
+    $script:isDocked = $true
+    $cfg.DockEdge = $script:dockEdge
+    $cfg.IsDocked = $true
+    Save-Config
+    Update-CapsuleWidth
 })
 
 $miTop = New-Object System.Windows.Forms.ToolStripMenuItem("Always on Top")
@@ -510,7 +753,18 @@ $tray.ContextMenuStrip = $menu
 $tray.Add_MouseClick({
     param($s, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-        if ($form.Visible) { $form.Hide() } else { $form.Show(); $form.BringToFront() }
+        if ($form.Visible) {
+            if ($script:isDocked) {
+                # Click tray icon can also un-collapse it
+                $script:isDocked = $false
+                Update-CapsuleWidth
+            } else {
+                $form.Hide()
+            }
+        } else {
+            $form.Show()
+            $form.BringToFront()
+        }
     }
 })
 
@@ -521,7 +775,7 @@ $pulseTimer.Add_Tick({
     if ($script:statusState -eq "running" -and $form.Visible) {
         $script:pulsePhase += 0.25
         if ($script:pulsePhase -gt 6.283) { $script:pulsePhase -= 6.283 }
-        Render-Capsule
+        Render-FloatingBar
     }
 })
 $pulseTimer.Start()
