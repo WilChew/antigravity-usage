@@ -45,22 +45,19 @@ let lastLiveWrite=0;
 function inspectConversationState(id){
   try{
     const dbFile=join(homedir(),'.gemini','antigravity','conversations',`${id}.db`);
-    if(!existsSync(dbFile))return null;
+    if(!existsSync(dbFile))return 'running';
     const db=new DatabaseSync(dbFile,{readOnly:true});
-    const stmt=db.prepare('SELECT idx, step_type, status FROM steps ORDER BY idx DESC LIMIT 3');
+    const stmt=db.prepare('SELECT idx, step_type, status FROM steps ORDER BY idx DESC LIMIT 5');
     const rows=stmt.all();
     db.close();
-    if(!rows||rows.length===0)return null;
+    if(!rows||rows.length===0)return 'running';
     const statuses=rows.map(r=>Number(r.status));
-    // 2: RUNNING, 8: GENERATING (Thinking / model output streaming)
-    if(statuses.some(s=>s===2||s===8))return 'running';
     // 9: WAITING (Step is WAITING for user approval / action needed)
-    if(statuses.some(s=>s===9))return 'waiting';
-    // 3: DONE, 4: INVALID, 5: CLEARED, 6: CANCELED, 7: ERROR, 12: INTERRUPTED
-    if(statuses.every(s=>s===3||s===4||s===5||s===6||s===7||s===12))return 'idle';
-    return null;
+    // Only waiting if there is a waiting step and no step is actively generating/running (2, 8)
+    if(statuses.some(s=>s===9)&&!statuses.some(s=>s===2||s===8))return 'waiting';
+    return 'running';
   }catch{
-    return null;
+    return 'running';
   }
 }
 

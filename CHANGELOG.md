@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.2.4] - 2026-11-26
+
+### 🐛 Bug Fixes / 问题修复
+- **Fix Running Tasks Flickering to "Free" Between Steps (修复任务执行中步骤交替时误切为 Free 状态)** (`sidecars/panel/main.mjs`):
+  - **Eliminate False Idle Overrides (消除误切空闲状态)**: 当智能体正在执行长任务时，上一个工具调用完成（步骤状态已写入 DONE）而模型正在规划或思考下一个操作（如 `Completing sync workflow... 30s`），底层 SQLite 仅记录了已完成步骤。之前逻辑因过度校验将此误判为 `idle`，导致执行中胶囊偶尔闪烁为 `Free`。
+  - **Rock-Solid Lifecycle Tracking (稳健生命周期保持)**: 以 Antigravity 运行状态机为基准，在整个执行周期内稳定保持 `Running` 与耗时递增，仅在出现用户等待交互（状态 9）时切为 `Action Needed`，任务真正全部结束时才平滑归位 `Free`。
+
+---
+
 ## [v1.2.3] - 2026-11-26
 
 ### 🐛 Bug Fixes / 问题修复
