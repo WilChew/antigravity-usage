@@ -52,9 +52,12 @@ function inspectConversationState(id){
     db.close();
     if(!rows||rows.length===0)return null;
     const statuses=rows.map(r=>Number(r.status));
-    if(statuses.some(s=>s===2||s===5))return 'running';
-    if(statuses.some(s=>s===8))return 'waiting';
-    if(statuses.every(s=>s===3||s===4||s===7))return 'idle';
+    // 2: RUNNING, 8: GENERATING (Thinking / model output streaming)
+    if(statuses.some(s=>s===2||s===8))return 'running';
+    // 9: WAITING (Step is WAITING for user approval / action needed)
+    if(statuses.some(s=>s===9))return 'waiting';
+    // 3: DONE, 4: INVALID, 5: CLEARED, 6: CANCELED, 7: ERROR, 12: INTERRUPTED
+    if(statuses.every(s=>s===3||s===4||s===5||s===6||s===7||s===12))return 'idle';
     return null;
   }catch{
     return null;

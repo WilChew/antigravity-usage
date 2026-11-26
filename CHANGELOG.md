@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.2.3] - 2026-11-26
+
+### 🐛 Bug Fixes / 问题修复
+- **Fix False "Action Needed" Alert While Thinking (修复模型思考时误触发 Action Needed 提醒)** (`sidecars/panel/main.mjs`):
+  - **Status Enum Correction (修正底层步骤状态枚举映射)**: 修正了底层 Protobuf 步骤状态枚举的识别逻辑。Antigravity 中 `status = 8` 为 `CORTEX_STEP_STATUS_GENERATING`（模型正在思考/流式生成中），而 `status = 9` 才是 `CORTEX_STEP_STATUS_WAITING`（等待用户确认/回答）。
+  - **No False Alerts (消除误报)**: 修正后，模型在深度思考或输出时保持正常的绿色 `Running` 状态，仅在真正需要用户操作（等待权限批准、回答提问或确认计划）时才会呈现琥珀金 `Action Needed`。
+
+---
+
 ## [v1.2.2] - 2026-11-26
 
 ### ✨ New Features / 新增功能
